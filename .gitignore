@@ -1,5 +1,7 @@
 unnecessary/
 control_robot.py
+enable_torque_move_ik.py
+todo.md
 
 # Byte-compiled / cached files
 __pycache__/

@@ -15,11 +15,11 @@ class ArmPose:
 
 @dataclass(frozen=True)
 class ArmGeometry:
-    l1: float = 0.077
-    a2: float = 0.130
-    a3: float = 0.124
-    #a4: float = 0.146
-    a4: float = 0.166
+    l1: float = 0.080 # base offset height
+    a2: float = 0.130 # first link length
+    a3: float = 0.124 # second link length
+    #a4: float = 0.146 # wrist/tool offset
+    a4: float = 0.111 # third link length
     joint4_min_rad: float = math.radians(-110.0)
     joint4_max_rad: float = math.radians(90.0)
 

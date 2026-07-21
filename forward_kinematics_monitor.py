@@ -6,7 +6,7 @@ ArmKinematics.forward(), so you can sanity-check the kinematics against where
 you actually see the arm.
 
 Run directly, e.g.:
-    python3 forward_kinematics_monitor.py --port /dev/ttyUSB0
+    python3 forward_kinematics_monitor.py --port /dev/cu.usbserial-FT88Z15T
     python3 forward_kinematics_monitor.py --rate 5
 
 Press Ctrl+C to stop.

@@ -323,6 +323,27 @@ class DynamixelDriver:
         if not self.connected:
             raise RuntimeError("Dynamixel bus is not connected")
 
+    def close_port_keep_torque(self) -> None:
+        """
+        Close the serial port without explicitly disabling motor torque.
+        Use this if you want the motors to hold their last commanded position
+        after the controller exits. This will *not* send torque-disable
+        commands to the motors; ensure this is what you intend for safety.
+        """
+        with self._locked_io("close port (keep torque enabled)"):
+            # Close the underlying PortHandler if present, but do not write
+            # any torque-disable commands. Leave motor torque state unchanged.
+            if self.port is not None:
+                try:
+                    close_port = getattr(self.port, "closePort", None)
+                    if callable(close_port):
+                        close_port()
+                finally:
+                    self.port = None
+                    self.packet = None
+                    self.current_port = ""
+                    self.connected = False
+
     @staticmethod
     def _to_signed32(value: int) -> int:
         return value - 2**32 if value >= 2**31 else value
