@@ -16,10 +16,19 @@ class DxlAddresses:
     max_pos: int = 48
     min_pos: int = 52
     torque_enable: int = 64
+    goal_current: int = 102
     profile_accel: int = 108
     profile_velocity: int = 112
     goal_pos: int = 116
+    present_current: int = 126
     present_pos: int = 132
+
+
+# Dynamixel X-series operating modes (control table address 11)
+OP_MODE_CURRENT = 0
+OP_MODE_POSITION = 3
+OP_MODE_EXTENDED_POSITION = 4
+OP_MODE_CURRENT_BASED_POSITION = 5
 
 
 class DynamixelDriver:
@@ -27,6 +36,10 @@ class DynamixelDriver:
     baudrate = 1_000_000
     min_dxl_position = 0
     max_dxl_position = 4095
+    # Current register units are ~2.69 mA/tick on XL430/XM430-class motors.
+    # Confirm against your gripper motor's control table before relying on
+    # absolute mA values.
+    current_ma_per_unit = 2.69
 
     def __init__(
         self,
@@ -55,6 +68,7 @@ class DynamixelDriver:
         self.last_sent_dxl = [2048, 2048, 2048, 2048]
         self.io_lock = threading.RLock()
         self.io_lock_timeout_sec = 2.0
+        self.gripper_op_mode = OP_MODE_EXTENDED_POSITION
 
     def connect(self, port_name: str) -> None:
         with self._locked_io("connect"):
@@ -128,10 +142,11 @@ class DynamixelDriver:
 
     def _init_motors_unlocked(self) -> None:
         self._require_connection()
+        self.gripper_op_mode = OP_MODE_EXTENDED_POSITION
         for idx, dxl_id in enumerate(self.motor_ids):
             motor_role = "gripper" if idx == 4 else f"joint {idx + 1}"
             self._write1(dxl_id, self.address.torque_enable, 0, f"init {motor_role}")
-            self._write1(dxl_id, self.address.op_mode, 4 if idx == 4 else 3, f"init {motor_role}")
+            self._write1(dxl_id, self.address.op_mode, self.gripper_op_mode if idx == 4 else 3, f"init {motor_role}")
             if idx < 4:
                 min_pos, max_pos = self.pos_limits[idx]
                 self._write4(dxl_id, self.address.min_pos, min_pos, f"init {motor_role}")
@@ -177,11 +192,88 @@ class DynamixelDriver:
             return self.kinematics.add_offsets(dxl_to_rad(dxl_positions))
 
     def set_gripper(self, position: int) -> int:
+        '''Plain position command; kept for backward compatibility. Uses whichever
+        operating mode the gripper is currently in (see set_gripper_position/
+        set_gripper_current to control that explicitly).'''
         with self._locked_io("set gripper"):
             position = self._clamp_int(position, self.min_dxl_position, self.max_dxl_position)
             if self.connected:
                 self._write_goal_position(self.motor_ids[4], position, "set gripper")
             return position
+
+    def set_gripper_position(self, position: int, max_current: int | None = None) -> int:
+        '''
+        Position-demand gripper control.
+        If max_current is given (raw current-register units), switches the gripper to
+        Current-based Position Control so it drives toward `position` but stalls
+        safely once it draws that much current -- e.g. closing on an object without
+        crushing it. If max_current is None, uses plain Position Control at full torque.
+        '''
+        with self._locked_io("set gripper position"):
+            position = self._clamp_int(position, self.min_dxl_position, self.max_dxl_position)
+            target_mode = OP_MODE_CURRENT_BASED_POSITION if max_current is not None else OP_MODE_EXTENDED_POSITION
+            self._set_gripper_operating_mode_unlocked(target_mode)
+            if not self.connected:
+                return position
+            if max_current is not None:
+                current = self._clamp_int(max_current, 0, 32767)
+                self._write2(self.motor_ids[4], self.address.goal_current, current, "set gripper max current")
+            self._write_goal_position(self.motor_ids[4], position, "set gripper position")
+            return position
+
+    def set_gripper_current(self, current: int) -> int:
+        '''
+        Current-demand (force) gripper control. Switches to pure Current Control
+        and drives the gripper closed/open at up to `current` (raw units, ~2.69 mA
+        each on X-series motors) with no position target -- useful for "squeeze at
+        force X" grasps where the exact finger position doesn't matter.
+        Positive values close the gripper, negative values open it (direction
+        depends on motor orientation -- verify on your hardware before relying on sign).
+        '''
+        with self._locked_io("set gripper current"):
+            current = self._clamp_int(current, -32768, 32767)
+            self._set_gripper_operating_mode_unlocked(OP_MODE_CURRENT)
+            if self.connected:
+                self._write2(self.motor_ids[4], self.address.goal_current, current, "set gripper current")
+            return current
+
+    def read_gripper_position(self) -> int:
+        with self._locked_io("read gripper position"):
+            if not self.connected:
+                return self.last_sent_dxl[-1] if len(self.last_sent_dxl) > 4 else 2048
+            return self._to_signed32(
+                self._read4(self.motor_ids[4], self.address.present_pos, "read gripper position")
+            )
+
+    def read_gripper_current_ma(self) -> float:
+        '''Present current draw on the gripper motor, in approximate mA (see current_ma_per_unit).'''
+        with self._locked_io("read gripper current"):
+            if not self.connected:
+                return 0.0
+            raw = self._to_signed16(
+                self._read2(self.motor_ids[4], self.address.present_current, "read gripper current")
+            )
+            return raw * self.current_ma_per_unit
+
+    def set_gripper_torque(self, enabled: bool) -> None:
+        '''Enable/disable torque on the gripper motor only, leaving the four arm
+        joints untouched (unlike disable_torque(), which affects all motors).
+        Useful for hand-moving the gripper to its mechanical limits during calibration.'''
+        with self._locked_io("set gripper torque"):
+            if not self.connected:
+                return
+            self._write1(self.motor_ids[4], self.address.torque_enable, 1 if enabled else 0, "set gripper torque")
+
+    def _set_gripper_operating_mode_unlocked(self, mode: int) -> None:
+        if self.gripper_op_mode == mode:
+            return
+        self.gripper_op_mode = mode
+        if not self.connected:
+            return
+        dxl_id = self.motor_ids[4]
+        self._write1(dxl_id, self.address.torque_enable, 0, "set gripper op mode (disable torque)")
+        self._write1(dxl_id, self.address.op_mode, mode, "set gripper op mode")
+        self._write1(dxl_id, self.address.torque_enable, 1, "set gripper op mode (enable torque)")
 
     def disable_torque(self) -> None:
         with self._locked_io("disable torque"):
@@ -211,6 +303,12 @@ class DynamixelDriver:
             self._describe_io(operation, "write1", dxl_id, address, value),
         )
 
+    def _write2(self, dxl_id: int, address: int, value: int, operation: str = "write2") -> None:
+        self._txrx(
+            lambda: self.packet.write2ByteTxRx(self.port, dxl_id, address, int(value) & 0xFFFF),
+            self._describe_io(operation, "write2", dxl_id, address, value),
+        )
+
     def _write4(self, dxl_id: int, address: int, value: int, operation: str = "write4") -> None:
         self._txrx(
             lambda: self.packet.write4ByteTxRx(self.port, dxl_id, address, int(value)),
@@ -229,6 +327,13 @@ class DynamixelDriver:
             lambda: tx_only(self.port, dxl_id, self.address.goal_pos, int(value)),
             self._describe_io(operation, "write4_tx_only", dxl_id, self.address.goal_pos, value),
         )
+
+    def _read2(self, dxl_id: int, address: int, operation: str = "read2") -> int:
+        value = self._txrx(
+            lambda: self.packet.read2ByteTxRx(self.port, dxl_id, address),
+            self._describe_io(operation, "read2", dxl_id, address),
+        )
+        return int(value)
 
     def _read4(self, dxl_id: int, address: int, operation: str = "read4") -> int:
         value = self._txrx(
@@ -347,6 +452,10 @@ class DynamixelDriver:
     @staticmethod
     def _to_signed32(value: int) -> int:
         return value - 2**32 if value >= 2**31 else value
+
+    @staticmethod
+    def _to_signed16(value: int) -> int:
+        return value - 2**16 if value >= 2**15 else value
 
     @staticmethod
     def _clamp_int(value: float, low: int, high: int) -> int:
