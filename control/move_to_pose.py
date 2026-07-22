@@ -7,8 +7,8 @@ import sys
 import time
 from typing import Sequence
 
-from kinematics import ArmKinematics, ArmPose, synchronized_joint_speeds
-from dynamixel_driver import DynamixelDriver
+from control.kinematics import ArmKinematics, ArmPose, synchronized_joint_speeds
+from interface.dynamixel_driver import DynamixelDriver
 
 """
 Move end-effector to absolute Cartesian position (cm, degrees)

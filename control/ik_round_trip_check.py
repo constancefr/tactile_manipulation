@@ -32,9 +32,9 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = Path(__file__).resolve().parent.name
 
-from .dynamixel_driver import DynamixelDriver
+from ..interface.dynamixel_driver import DynamixelDriver
 from .kinematics import ArmKinematics, ArmPose
-from .ports import list_serial_ports, recommended_port
+from ..interface.ports import list_serial_ports, recommended_port
 
 DEFAULT_RATE_HZ = 5.0
 

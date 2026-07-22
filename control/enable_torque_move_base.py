@@ -16,8 +16,8 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = Path(__file__).resolve().parent.name
 
-from .dynamixel_driver import DynamixelDriver
-from .ports import list_serial_ports, recommended_port
+from ..interface.dynamixel_driver import DynamixelDriver
+from ..interface.ports import list_serial_ports, recommended_port
 
 BASE_JOINT_INDEX = 0
 DEFAULT_DEGREES = 2.0
