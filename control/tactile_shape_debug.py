@@ -7,7 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import tactile_shape as ts
+import control.tactile_shape as ts
 
 """
 Step-by-step visualization of the tactile_shape.py pipeline for a single image:
