@@ -16,6 +16,13 @@ from .tactile_detector import (
     DetectorConfig,
     TactileBandDetector,
 )
+from .reorientation_task import (
+    KeyReorientationTask,
+    OrientationCalibration,
+    ReorientationMotionConfig,
+    ReorientationPoses,
+    ReorientationRunResult,
+)
 
 __all__ = [
     "ArmController",
@@ -39,4 +46,9 @@ __all__ = [
     "SortingPoses",
     "TactileBandDetector",
     "Workspace",
+    "KeyReorientationTask",
+    "OrientationCalibration",
+    "ReorientationMotionConfig",
+    "ReorientationPoses",
+    "ReorientationRunResult",
 ]
