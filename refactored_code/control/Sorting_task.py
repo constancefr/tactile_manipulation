@@ -79,9 +79,8 @@ class TactileShapeDebugClassifierAdapter:
             else image.source_image
         )
 
-        # build_debug_panel() deliberately accepts a Path. A lossless temporary
-        # PNG adapts the existing in-memory camera frame without changing that
-        # script's interface or classification logic.
+        # build_debug_panel() accepts a Path, so use a lossless temporary PNG
+        # to adapt the existing in-memory camera frame.
         with tempfile.TemporaryDirectory(
             prefix="tactile_shape_classifier_"
         ) as temporary_dir:
