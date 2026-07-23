@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from kinematics import ArmKinematics, dxl_to_rad, rad_to_dxl
+from control.kinematics import ArmKinematics, dxl_to_rad, rad_to_dxl
 
 
 @dataclass(frozen=True)

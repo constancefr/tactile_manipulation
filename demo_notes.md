@@ -1,0 +1,1 @@
+- [ ] Make sure the gripper closes in the same manner during demo as in testing (rotates in same direction)
