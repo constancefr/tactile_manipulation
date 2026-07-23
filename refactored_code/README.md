@@ -74,7 +74,9 @@ The integration added for the complete task is split into three reusable parts:
 
 - `sensors/digit_camera.py` — connects to one DIGIT by serial number and returns an in-memory BGR frame.
 - `control/key_classifier.py` — temporary edge-count mapping from detector evidence to `good`/`defect`.
-- `control/sorting_task.py` — the hardware-independent sequence controller.
+- `control/sorting_task.py` — the preserved legacy sequence controller.
+- `control/Sorting_task.py` — the classifier-aware controller used by `scripts/sort_key.py`.
+- `control/tactile_shape.py` and `control/tactile_shape_debug.py` — the relocated tactile-shape processing modules.
 - `scripts/sort_key.py` — the executable configuration and entry point.
 
 The sequence is:
@@ -117,7 +119,7 @@ OR:
 python -m scripts.sort_key \
     --port /dev/ttyUSB0 \
     --digit-serial D12345 \
-    --minimum-good-edges 2 \
+    --minimum-good-edges 0 \
     --max-gripper-current 60 \
     --output-dir sorting_results
 ```
@@ -129,8 +131,8 @@ The script saves the raw, annotated, and preprocessed DIGIT images for every cyc
 The current `EmbossedFeatureClassifier` uses this provisional mapping:
 
 ```text
-edge_count >= 2  -> good
-edge_count < 2   -> defect
+edge_count == 0  -> good
+edge_count > 0   -> defect
 ```
 
 This is isolated from the robot workflow so it can be replaced by the final classifier without changing the motion sequence.

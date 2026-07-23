@@ -1,0 +1,16 @@
+file,edge_count,estimated_band_count,status,output
+2026-07-22-152307.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-152307_detected.jpg
+2026-07-22-152329.jpg,2,1.0,ok,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-152329_detected.jpg
+2026-07-22-152346.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-152346_detected.jpg
+2026-07-22-153606.jpg,0,0.0,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153606_detected.jpg
+2026-07-22-153621.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153621_detected.jpg
+2026-07-22-153651.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153651_detected.jpg
+2026-07-22-153705.jpg,2,1.0,ok,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153705_detected.jpg
+2026-07-22-153720.jpg,6,3.0,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153720_detected.jpg
+2026-07-22-153735.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153735_detected.jpg
+2026-07-22-153751.jpg,0,0.0,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153751_detected.jpg
+2026-07-22-153809.jpg,0,0.0,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153809_detected.jpg
+2026-07-22-153821.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153821_detected.jpg
+2026-07-22-153835.jpg,1,0.5,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153835_detected.jpg
+2026-07-22-153848.jpg,2,1.0,ok,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153848_detected.jpg
+2026-07-22-153903.jpg,0,0.0,check_detection,/home/joe/Desktop/Summer_School/Project/tactile_manipulation/Data/Single_rect_Data/hyperparameter_sweep/best_detection_results/2026-07-22-153903_detected.jpg

@@ -20,12 +20,14 @@ import cv2
 from control import (
     ArmKinematics,
     ArmPose,
-    EmbossedFeatureClassifier,
     GripperCalibration,
-    KeySortingTask,
     RobotHardware,
-    SortingPoses,
     TactileBandDetector,
+)
+from control.Sorting_task import (
+    KeySortingTask,
+    SortingPoses,
+    TactileShapeDebugClassifierAdapter,
 )
 from sensors import DigitCamera, DigitCameraConfig
 
@@ -40,15 +42,15 @@ GRIPPER_CALIBRATED = False
 
 SORTING_POSES = SortingPoses(
     home=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
-    # pick_approach=ArmPose.from_cm_degrees(20.0, 0.0, 14.0, 0.0),
+    pick_approach=ArmPose.from_cm_degrees(20.0, 0.0, 14.0, 0.0),
     pick_grasp=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
     # pick_grasp=ArmPose.from_cm_degrees(20.0, 0.0, 9.0, 0.0),
-    # pick_lift=ArmPose.from_cm_degrees(20.0, 0.0, 18.0, 0.0),
+    pick_lift=ArmPose.from_cm_degrees(20.0, 0.0, 18.0, 0.0),
     # Coordinate signs depend on how your arm's frame is mounted. Verify which
     # side is physically right/left before setting POSITIONS_CALIBRATED=True.
-    # good_approach=ArmPose.from_cm_degrees(18.0, -12.0, 18.0, 0.0),
+    good_approach=ArmPose.from_cm_degrees(18.0, -12.0, 18.0, 0.0),
     good_drop=ArmPose.from_cm_degrees(19.5, 15.0, 5.0, 0.0),
-    # defect_approach=ArmPose.from_cm_degrees(18.0, 12.0, 18.0, 0.0),
+    defect_approach=ArmPose.from_cm_degrees(18.0, 12.0, 18.0, 0.0),
     defect_drop=ArmPose.from_cm_degrees(19.5, -15.0, 5.0, 0.0),
 )
 
@@ -84,8 +86,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--minimum-good-edges",
         type=int,
-        default=2,
-        help="Temporary rule: classify as good at or above this edge count",
+        default=0,
+        help=(
+            "Exact detected-edge count for a good key; the default 0 means "
+            "that any detected line is defective"
+        ),
     )
     parser.add_argument(
         "--max-gripper-current",
@@ -151,10 +156,11 @@ def main() -> None:
 
     # Import only for a real hardware run so pose validation still works on a
     # computer that does not have the arm driver's dependencies installed.
-    from ..interface.dynamixel_driver import DynamixelDriver
+    from interface.dynamixel_driver import DynamixelDriver
 
     detector = TactileBandDetector()
-    classifier = EmbossedFeatureClassifier(
+    classifier = TactileShapeDebugClassifierAdapter(
+        reference_image=blank_image,
         minimum_good_edges=args.minimum_good_edges
     )
     digit_config = DigitCameraConfig(

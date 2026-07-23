@@ -23,9 +23,10 @@ class KeyClassification:
 class EmbossedFeatureClassifier:
     """Temporary edge-count rule for flat versus embossed keys.
 
-    The intended evidence is approximately zero long edges for a flat key and
-    two long edges for one embossed line. This simple rule is intentionally
-    isolated so it can later be replaced without changing the robot sequence.
+    A good key has no detected embossed line, represented by zero detected
+    edges. Any detected edge evidence classifies the key as defective. The
+    ``minimum_good_edges`` name is retained for API compatibility and denotes
+    the exact expected edge count for a good key; its default is zero.
     """
 
     def __init__(self, minimum_good_edges: int = 0) -> None:
@@ -37,7 +38,7 @@ class EmbossedFeatureClassifier:
         edge_count = detection.edge_count
         label = (
             KeyLabel.GOOD
-            if edge_count >= self.minimum_good_edges
+            if edge_count == self.minimum_good_edges
             else KeyLabel.DEFECT
         )
         return KeyClassification(

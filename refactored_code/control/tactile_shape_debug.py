@@ -19,7 +19,7 @@ content when aspect > HOUGH_REFINEMENT_ASPECT_MIN (mirrors classify() exactly);
 otherwise they're blank with a note, since that refinement wasn't applied.
 
 Usage:
-    python3 tactile_shape_debug.py --input Data --reference Data/2026-07-21-202339.jpg \\
+    python3 -m control.tactile_shape_debug --input Data --reference Data/2026-07-21-202339.jpg \\
         --filter rectangle --out-dir Data/debug_steps
 """
 
@@ -108,6 +108,7 @@ def build_debug_panel(path: Path, reference: np.ndarray) -> tuple[np.ndarray, ts
     canny_vis = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
     hough_vis = img.copy()
     hough_note = "not applicable (aspect <= threshold)"
+    n_lines = 0
     if hull is not None and aspect > ts.HOUGH_REFINEMENT_ASPECT_MIN:
         filled = np.zeros(diff_norm.shape[:2], dtype=np.uint8)
         cv2.drawContours(filled, [hull], -1, 255, thickness=-1)
@@ -124,6 +125,11 @@ def build_debug_panel(path: Path, reference: np.ndarray) -> tuple[np.ndarray, ts
                 cv2.line(hough_vis, (x1, y1), (x2, y2), (0, 0, 255), 2)
         refined = result.orientation_deg if result is not None else None
         hough_note = f"{n_lines} segments -> refined angle={refined:.1f}deg" if refined is not None else f"{n_lines} segments (too few to refine)"
+
+    if result is not None:
+        # Expose the existing Hough output so an adapter can apply task-level
+        # GOOD/DEFECT semantics without running a second line detector.
+        features["num_edges"] = n_lines
 
     stages = [
         (resize(img), "1. raw frame"),

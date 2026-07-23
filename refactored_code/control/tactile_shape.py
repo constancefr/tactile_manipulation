@@ -44,9 +44,9 @@ Both paths converge on the same binary-mask -> contour -> convex-hull pipeline:
     vertex count; orientation via the object's minimum-area bounding rect.
 
 Usage:
-    python3 tactile_shape.py --input Data --reference Data/2026-07-21-202339.jpg \\
+    python3 -m control.tactile_shape --input Data --reference Data/2026-07-21-202339.jpg \\
         --annotate-dir Data/annotated
-    python3 tactile_shape.py --input Data/2026-07-21-202413.jpg --show
+    python3 -m control.tactile_shape --input Data/2026-07-21-202413.jpg --show
 """
 
 # --- Segmentation tuning: gradient-magnitude fallback (no reference frame) --

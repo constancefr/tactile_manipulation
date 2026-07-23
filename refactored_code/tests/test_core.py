@@ -135,10 +135,85 @@ def test_embossed_classifier_maps_edge_evidence() -> None:
         def __init__(self, edge_count: int) -> None:
             self.edge_count = edge_count
 
-    classifier = EmbossedFeatureClassifier(minimum_good_edges=2)
-    assert classifier.classify(Evidence(0)).label is KeyLabel.DEFECT
-    assert classifier.classify(Evidence(2)).label is KeyLabel.GOOD
-    assert classifier.classify(Evidence(4)).label is KeyLabel.GOOD
+    classifier = EmbossedFeatureClassifier(minimum_good_edges=0)
+    assert classifier.classify(Evidence(0)).label is KeyLabel.GOOD
+    assert classifier.classify(Evidence(2)).label is KeyLabel.DEFECT
+    assert classifier.classify(Evidence(4)).label is KeyLabel.DEFECT
+
+
+def test_debug_classifier_angle_and_good_defect_motion_routes() -> None:
+    from control import ArmPose, KeyLabel
+    from control.Sorting_task import (
+        SortingPoses,
+        TactileShapeDebugClassifierAdapter,
+    )
+
+    frame = np.zeros((24, 32, 3), dtype=np.uint8)
+
+    class ShapeResult:
+        label = "edge_contact"
+        orientation_deg = 37.5
+
+    shape_result = ShapeResult()
+    debug_panel = np.zeros((72, 96, 3), dtype=np.uint8)
+
+    def build_good_debug_panel(path, reference):
+        return debug_panel, shape_result, {
+            "aspect": 4.5,
+            "num_edges": 0,
+        }
+
+    class Evidence:
+        def __init__(self, edge_count: int) -> None:
+            self.source_image = frame
+            self.edge_count = edge_count
+
+    good_adapter = TactileShapeDebugClassifierAdapter(
+        frame,
+        minimum_good_edges=0,
+        debug_panel_builder=build_good_debug_panel,
+    )
+
+    def build_defect_debug_panel(path, reference):
+        return debug_panel, shape_result, {
+            "aspect": 4.5,
+            "num_edges": 2,
+        }
+
+    defect_adapter = TactileShapeDebugClassifierAdapter(
+        frame,
+        minimum_good_edges=0,
+        debug_panel_builder=build_defect_debug_panel,
+    )
+
+    # Deliberately contradict the legacy detector evidence. The debug-script
+    # output alone must determine GOOD/DEFECT.
+    good = good_adapter.classify(Evidence(99))
+    defect = defect_adapter.classify(Evidence(0))
+
+    assert good.label is KeyLabel.GOOD
+    assert good.edge_count == 0
+    assert defect.label is KeyLabel.DEFECT
+    assert defect.edge_count == 2
+    assert good.orientation_deg == 37.5
+    assert good.shape_result is shape_result
+
+    common = ArmPose.from_cm_degrees(10.0, 0.0, 9.0, 0.0)
+    good_drop = ArmPose.from_cm_degrees(19.5, 15.0, 5.0, 0.0)
+    defect_drop = ArmPose.from_cm_degrees(19.5, -15.0, 5.0, 0.0)
+    poses = SortingPoses(
+        home=common,
+        pick_approach=common,
+        pick_grasp=common,
+        pick_lift=common,
+        good_approach=common,
+        good_drop=good_drop,
+        defect_approach=common,
+        defect_drop=defect_drop,
+    )
+
+    assert poses.destination_for_classifier_output(good) is good_drop
+    assert poses.destination_for_classifier_output(defect) is defect_drop
 
 
 def test_digit_camera_uses_injected_device_and_warms_up() -> None:
