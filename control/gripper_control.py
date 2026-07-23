@@ -34,16 +34,13 @@ Examples:
     python3 gripper_control.py --port /dev/ttyUSB0 --open
 """
 
-DXL_MIN_POSITION = 0
-DXL_MAX_POSITION = 4095
+DXL_MIN_POSITION = 3500
+DXL_MAX_POSITION = 5200
 
-# Actual mechanical limits, in raw ticks -- do NOT assume these are 0/4095.
-# Find the real values for your hardware with:
-#   python3 gripper_calibrate.py --port /dev/ttyUSB0 --stall-current 30
-# and copy its reported closed_ticks/open_ticks here. Until then, these
-# placeholders just fall back to the (probably wrong) full range.
-GRIPPER_CLOSED_TICKS = DXL_MIN_POSITION
-GRIPPER_OPEN_TICKS = DXL_MAX_POSITION
+# Actual mechanical limits, in raw ticks -- measured via:
+#   python3 gripper_calibrate.py --port /dev/ttyUSB0 --mode manual
+GRIPPER_CLOSED_TICKS = 2390
+GRIPPER_OPEN_TICKS = 1196
 
 SETTLE_DELAY_SEC = 1.0
 DEFAULT_STEP = 20
@@ -126,6 +123,15 @@ def run_interactive(driver: DynamixelDriver, step: int, max_current: int | None)
     # this motor's mounting/rotation direction.
     open_dir = 1 if GRIPPER_OPEN_TICKS >= GRIPPER_CLOSED_TICKS else -1
     lo, hi = sorted((GRIPPER_CLOSED_TICKS, GRIPPER_OPEN_TICKS))
+
+    if not (lo <= position <= hi):
+        print(
+            f"WARNING: current position ({position}) is outside the calibrated "
+            f"range [{lo}, {hi}]. The first keypress will jump straight to whichever "
+            "end is closer, in either direction, until it's back inside range -- "
+            "this usually means GRIPPER_CLOSED_TICKS/GRIPPER_OPEN_TICKS are stale "
+            "versus the gripper's actual current position."
+        )
 
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)

@@ -30,12 +30,12 @@ class SortingPoses:
     """All fixed poses required by the sorting cell."""
 
     home: ArmPose
-    pick_approach: ArmPose
+    # pick_approach: ArmPose
     pick_grasp: ArmPose
     pick_lift: ArmPose
-    good_approach: ArmPose
+    # good_approach: ArmPose
     good_drop: ArmPose
-    defect_approach: ArmPose
+    # defect_approach: ArmPose
     defect_drop: ArmPose
 
     def destination_for(self, label: KeyLabel) -> tuple[ArmPose, ArmPose]:
@@ -50,12 +50,12 @@ class SortingPoses:
     def named(self) -> dict[str, ArmPose]:
         return {
             "home": self.home,
-            "pick_approach": self.pick_approach,
+            # "pick_approach": self.pick_approach,
             "pick_grasp": self.pick_grasp,
             "pick_lift": self.pick_lift,
-            "good_approach": self.good_approach,
+            # "good_approach": self.good_approach,
             "good_drop": self.good_drop,
-            "defect_approach": self.defect_approach,
+            # "defect_approach": self.defect_approach,
             "defect_drop": self.defect_drop,
         }
 
@@ -132,11 +132,14 @@ class KeySortingTask:
         self.validate_poses()
 
         try:
-            self._log("Opening gripper")
-            self.robot.gripper.open(max_current=self.gripper_max_current)
-
             # self._log("Moving above key")
             # self.robot.arm.move_to_pose(self.poses.pick_approach)
+
+            self._log("Descending to grasp pose")
+            self.robot.arm.move_to_pose(self.poses.pick_grasp)
+
+            self._log("Opening gripper")
+            self.robot.gripper.open(max_current=self.gripper_max_current)
 
             # Wait for user to place the key in the gripper's grasping area
             try:
@@ -145,9 +148,6 @@ class KeySortingTask:
                 # Non-interactive environments such as pytest capture stdin.
                 # Skip the pause there so the task remains testable.
                 pass
-
-            self._log("Descending to grasp pose")
-            self.robot.arm.move_to_pose(self.poses.pick_grasp)
 
             self._log("Closing gripper around key")
             self.robot.gripper.close(max_current=self.gripper_max_current)
@@ -176,8 +176,8 @@ class KeySortingTask:
                 classification,
             )
 
-            # self._log("Lifting key clear of stand")
-            # self.robot.arm.move_to_pose(self.poses.pick_lift)
+            self._log("Lifting key clear of stand")
+            self.robot.arm.move_to_pose(self.poses.pick_lift)
 
             drop_pose = self.poses.destination_for(
                 classification.label

@@ -36,14 +36,14 @@ from sensors import DigitCamera, DigitCameraConfig
 # These coordinates are safe-looking examples only. They are not measurements
 # of your setup. Keep execution blocked until every value has been calibrated.
 POSITIONS_CALIBRATED = True
-GRIPPER_CALIBRATED = False
+GRIPPER_CALIBRATED = True
 
 SORTING_POSES = SortingPoses(
     home=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
     # pick_approach=ArmPose.from_cm_degrees(20.0, 0.0, 14.0, 0.0),
-    pick_grasp=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
+    pick_grasp=ArmPose.from_cm_degrees(19.5, 0.0, 15, 0.0),
     # pick_grasp=ArmPose.from_cm_degrees(20.0, 0.0, 9.0, 0.0),
-    # pick_lift=ArmPose.from_cm_degrees(20.0, 0.0, 18.0, 0.0),
+    pick_lift=ArmPose.from_cm_degrees(19.5, 0.0, 15, 0.0),
     # Coordinate signs depend on how your arm's frame is mounted. Verify which
     # side is physically right/left before setting POSITIONS_CALIBRATED=True.
     # good_approach=ArmPose.from_cm_degrees(18.0, -12.0, 18.0, 0.0),
@@ -151,7 +151,7 @@ def main() -> None:
 
     # Import only for a real hardware run so pose validation still works on a
     # computer that does not have the arm driver's dependencies installed.
-    from ..interface.dynamixel_driver import DynamixelDriver
+    from interface.dynamixel_driver import DynamixelDriver
 
     detector = TactileBandDetector()
     classifier = EmbossedFeatureClassifier(

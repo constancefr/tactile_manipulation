@@ -25,8 +25,8 @@ Two modes:
       python3 gripper_calibrate.py --port /dev/ttyUSB0 --mode manual
 """
 
-DXL_MIN_POSITION = 0
-DXL_MAX_POSITION = 4095
+DXL_MIN_POSITION = 3500
+DXL_MAX_POSITION = 5200
 POLL_INTERVAL_SEC = 0.2
 STABLE_READS_REQUIRED = 4
 STABLE_TOLERANCE_TICKS = 2

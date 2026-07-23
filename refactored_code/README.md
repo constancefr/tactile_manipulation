@@ -116,7 +116,7 @@ OR:
 ```
 python -m scripts.sort_key \
     --port /dev/ttyUSB0 \
-    --digit-serial D12345 \
+    --digit-serial D20908 \
     --minimum-good-edges 2 \
     --max-gripper-current 60 \
     --output-dir sorting_results
