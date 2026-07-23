@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Protocol
@@ -19,109 +18,7 @@ from .key_classifier import (
 )
 from .kinematics import ArmPose
 from .robot_hardware import RobotHardware
-from .tactile_shape_debug import build_debug_panel
 from .tactile_detector import DetectionResult, TactileBandDetector
-
-
-DebugPanelBuilder = Callable[
-    [Path],
-    tuple[np.ndarray, object | None, dict[str, object]],
-]
-
-
-def _load_tactile_shape_debug_builder() -> DebugPanelBuilder:
-    """Return the relocated debug classifier from this control package."""
-    return build_debug_panel
-
-
-@dataclass(frozen=True)
-class TactileShapeClassification(KeyClassification):
-    """Existing motion classification plus the real debug-script output."""
-
-    shape_label: str
-    orientation_deg: float | None
-    shape_result: object
-    debug_panel: np.ndarray = field(repr=False, compare=False)
-    shape_features: dict[str, object] = field(repr=False, compare=False)
-
-
-@dataclass(frozen=True)
-class DebugEdgeEvidence:
-    """Line evidence returned by ``tactile_shape_debug.build_debug_panel``."""
-
-    edge_count: int
-
-
-class TactileShapeDebugClassifierAdapter:
-    """Adapt ``tactile_shape_debug`` to the existing classifier interface."""
-
-    def __init__(
-        self,
-        *,
-        minimum_good_edges: int = 0,
-        debug_panel_builder: DebugPanelBuilder | None = None,
-    ) -> None:
-        self._key_classifier = EmbossedFeatureClassifier(
-            minimum_good_edges=minimum_good_edges
-        )
-        self._build_debug_panel = (
-            debug_panel_builder or _load_tactile_shape_debug_builder()
-        )
-
-    def classify(
-        self,
-        image: np.ndarray | DetectionResult,
-    ) -> TactileShapeClassification:
-        """Run the real debug classifier and adapt its output to a task label."""
-        frame = (
-            image
-            if isinstance(image, np.ndarray)
-            else image.source_image
-        )
-
-        # build_debug_panel() accepts a Path, so use a lossless temporary PNG
-        # to adapt the existing in-memory camera frame.
-        with tempfile.TemporaryDirectory(
-            prefix="tactile_shape_classifier_"
-        ) as temporary_dir:
-            frame_path = Path(temporary_dir) / "captured_frame.png"
-            if not cv2.imwrite(str(frame_path), frame):
-                raise RuntimeError(
-                    "Could not create the temporary classifier input image"
-                )
-            debug_panel, shape_result, features = self._build_debug_panel(
-                frame_path
-            )
-
-        if shape_result is None:
-            raise RuntimeError(
-                "tactile_shape_debug could not classify the captured frame"
-            )
-
-        try:
-            debug_edge_count = int(features["num_edges"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise RuntimeError(
-                "tactile_shape_debug did not return a valid num_edges value"
-            ) from exc
-        if debug_edge_count < 0:
-            raise RuntimeError(
-                "tactile_shape_debug returned a negative num_edges value"
-            )
-
-        key_classification = self._key_classifier.classify(
-            DebugEdgeEvidence(edge_count=debug_edge_count)
-        )
-        return TactileShapeClassification(
-            label=key_classification.label,
-            edge_count=key_classification.edge_count,
-            minimum_good_edges=key_classification.minimum_good_edges,
-            shape_label=shape_result.label,
-            orientation_deg=shape_result.orientation_deg,
-            shape_result=shape_result,
-            debug_panel=debug_panel,
-            shape_features=dict(features),
-        )
 
 
 class TactileCameraProtocol(Protocol):
@@ -133,30 +30,18 @@ class SortingPoses:
     """All fixed poses required by the sorting cell."""
 
     home: ArmPose
-    pick_approach: ArmPose
+    # pick_approach: ArmPose
     pick_grasp: ArmPose
     pick_lift: ArmPose
-    good_approach: ArmPose
+    # good_approach: ArmPose
     good_drop: ArmPose
-    defect_approach: ArmPose
+    # defect_approach: ArmPose
     defect_drop: ArmPose
 
-    def destination_for(self, label: KeyLabel) -> ArmPose:
+    def destination_for(self, label: KeyLabel) -> tuple[ArmPose, ArmPose]:
         if label is KeyLabel.GOOD:
             return self.good_drop
         return self.defect_drop
-
-    def destination_for_classifier_output(
-        self,
-        classification_output: KeyClassification | None,
-    ) -> ArmPose:
-        """Use the adapter's GOOD/DEFECT output as the motion-routing key."""
-        if classification_output is None:
-            raise ValueError(
-                "A successful tactile-shape classification is required for motion"
-            )
-        return self.destination_for(classification_output.label)
-
     # def destination_for(self, classification_output) -> tuple[ArmPose, ArmPose]:
     #     if classification_output is not None:
     #         return self.good_approach, self.good_drop
@@ -165,19 +50,19 @@ class SortingPoses:
     def named(self) -> dict[str, ArmPose]:
         return {
             "home": self.home,
-            "pick_approach": self.pick_approach,
+            # "pick_approach": self.pick_approach,
             "pick_grasp": self.pick_grasp,
             "pick_lift": self.pick_lift,
-            "good_approach": self.good_approach,
+            # "good_approach": self.good_approach,
             "good_drop": self.good_drop,
-            "defect_approach": self.defect_approach,
+            # "defect_approach": self.defect_approach,
             "defect_drop": self.defect_drop,
         }
 
 
 @dataclass(frozen=True)
 class SortRunResult:
-    classification: TactileShapeClassification
+    classification: KeyClassification
     detection: DetectionResult
     raw_image_path: Path
     annotated_image_path: Path
@@ -192,13 +77,14 @@ class KeySortingTask:
         robot: RobotHardware,
         camera: TactileCameraProtocol,
         detector: TactileBandDetector,
-        classifier: TactileShapeDebugClassifierAdapter,
+        classifier: EmbossedFeatureClassifier,
         poses: SortingPoses,
         *,
         output_dir: Path | str = "sorting_results",
         gripper_max_current: int | None = 60,
         tactile_settle_delay_sec: float = 0.5,
         return_home: bool = True,
+        blank_image: np.ndarray | None = None,
         sleep: Callable[[float], None] = time.sleep,
         log: Callable[[str], None] = print,
         input_fn: Callable[[str], str] = input,
@@ -207,6 +93,10 @@ class KeySortingTask:
             raise ValueError("gripper_max_current must be positive")
         if tactile_settle_delay_sec < 0.0:
             raise ValueError("tactile_settle_delay_sec cannot be negative")
+        if blank_image is not None and (
+            not isinstance(blank_image, np.ndarray) or blank_image.ndim != 3
+        ):
+            raise ValueError("blank_image must be a BGR NumPy image")
 
         self.robot = robot
         self.camera = camera
@@ -217,6 +107,7 @@ class KeySortingTask:
         self.gripper_max_current = gripper_max_current
         self.tactile_settle_delay_sec = tactile_settle_delay_sec
         self.return_home = return_home
+        self.blank_image = blank_image
         self._sleep = sleep
         self._log = log
         self._input = input_fn
@@ -241,11 +132,14 @@ class KeySortingTask:
         self.validate_poses()
 
         try:
-            self._log("Opening gripper")
-            self.robot.gripper.open(max_current=self.gripper_max_current)
-
             # self._log("Moving above key")
             # self.robot.arm.move_to_pose(self.poses.pick_approach)
+
+            self._log("Descending to grasp pose")
+            self.robot.arm.move_to_pose(self.poses.pick_grasp)
+
+            self._log("Opening gripper")
+            self.robot.gripper.open(max_current=self.gripper_max_current)
 
             # Wait for user to place the key in the gripper's grasping area
             try:
@@ -254,9 +148,6 @@ class KeySortingTask:
                 # Non-interactive environments such as pytest capture stdin.
                 # Skip the pause there so the task remains testable.
                 pass
-
-            self._log("Descending to grasp pose")
-            self.robot.arm.move_to_pose(self.poses.pick_grasp)
 
             self._log("Closing gripper around key")
             self.robot.gripper.close(max_current=self.gripper_max_current)
@@ -268,20 +159,16 @@ class KeySortingTask:
             self._log("Capturing DIGIT tactile image")
             frame = self.camera.capture_frame()
 
-            self._log("Classifying tactile shape and line evidence")
-            classification = self.classifier.classify(frame)
+            self._log("Detecting embossed-feature edges")
+            detection = self.detector.detect(
+                frame,
+                blank_image=self.blank_image,
+            )
+            classification = self.classifier.classify(detection)
             self._log(
                 f"Classification: {classification.label.value} "
-                f"({classification.edge_count} debug-script edges); "
-                f"shape={classification.shape_label}; "
-                f"orientation={classification.orientation_deg}"
+                f"({classification.edge_count} detected edges)"
             )
-
-            # Retain the existing detector only for its legacy annotated and
-            # preprocessed inspection artifacts. Its edge_count is not used to
-            # choose GOOD/DEFECT or the motion destination.
-            self._log("Generating legacy edge-detection artifacts")
-            detection = self.detector.detect(frame)
 
             paths = self._save_inspection_artifacts(
                 frame,
@@ -289,11 +176,11 @@ class KeySortingTask:
                 classification,
             )
 
-            # self._log("Lifting key clear of stand")
-            # self.robot.arm.move_to_pose(self.poses.pick_lift)
+            self._log("Lifting key clear of stand")
+            self.robot.arm.move_to_pose(self.poses.pick_lift)
 
-            drop_pose = self.poses.destination_for_classifier_output(
-                classification
+            drop_pose = self.poses.destination_for(
+                classification.label
             )
             self._log(
                 f"Moving to {classification.label.value} bucket approach"
@@ -336,7 +223,7 @@ class KeySortingTask:
         self,
         frame: np.ndarray,
         detection: DetectionResult,
-        classification: TactileShapeClassification,
+        classification: KeyClassification,
     ) -> tuple[Path, Path, Path]:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         run_dir = self.output_dir / f"{timestamp}_{classification.label.value}"
@@ -357,8 +244,6 @@ class KeySortingTask:
                     f"label={classification.label.value}",
                     f"edge_count={classification.edge_count}",
                     f"minimum_good_edges={classification.minimum_good_edges}",
-                    f"shape_label={classification.shape_label}",
-                    f"orientation_deg={classification.orientation_deg}",
                 ]
             )
             + "\n",

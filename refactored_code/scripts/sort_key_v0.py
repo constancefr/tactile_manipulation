@@ -15,17 +15,17 @@ import argparse
 import math
 from pathlib import Path
 
+import cv2
+
 from control import (
     ArmKinematics,
     ArmPose,
+    EmbossedFeatureClassifier,
     GripperCalibration,
-    RobotHardware,
-    TactileBandDetector,
-)
-from control.Sorting_task import (
     KeySortingTask,
+    RobotHardware,
     SortingPoses,
-    TactileShapeDebugClassifierAdapter,
+    TactileBandDetector,
 )
 from sensors import DigitCamera, DigitCameraConfig
 
@@ -40,21 +40,21 @@ GRIPPER_CALIBRATED = True
 
 SORTING_POSES = SortingPoses(
     home=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
-    pick_approach=ArmPose.from_cm_degrees(20.0, 0.0, 14.0, 0.0),
-    pick_grasp=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
+    # pick_approach=ArmPose.from_cm_degrees(20.0, 0.0, 14.0, 0.0),
+    pick_grasp=ArmPose.from_cm_degrees(19.5, 0.0, 15, 0.0),
     # pick_grasp=ArmPose.from_cm_degrees(20.0, 0.0, 9.0, 0.0),
-    pick_lift=ArmPose.from_cm_degrees(20.0, 0.0, 18.0, 0.0),
+    pick_lift=ArmPose.from_cm_degrees(19.5, 0.0, 15, 0.0),
     # Coordinate signs depend on how your arm's frame is mounted. Verify which
     # side is physically right/left before setting POSITIONS_CALIBRATED=True.
-    good_approach=ArmPose.from_cm_degrees(18.0, -12.0, 18.0, 0.0),
+    # good_approach=ArmPose.from_cm_degrees(18.0, -12.0, 18.0, 0.0),
     good_drop=ArmPose.from_cm_degrees(19.5, 15.0, 5.0, 0.0),
-    defect_approach=ArmPose.from_cm_degrees(18.0, 12.0, 18.0, 0.0),
+    # defect_approach=ArmPose.from_cm_degrees(18.0, 12.0, 18.0, 0.0),
     defect_drop=ArmPose.from_cm_degrees(19.5, -15.0, 5.0, 0.0),
 )
 
 GRIPPER_CALIBRATION = GripperCalibration(
-    closed_ticks=2250,  # TODO: replace with measured closed/contact position
-    open_ticks=2000,    # TODO: replace with measured open position
+    closed_ticks=2250,
+    open_ticks=2000,
 )
 
 
@@ -77,13 +77,15 @@ def parse_args() -> argparse.Namespace:
         help="Directory for raw, annotated, and preprocessed tactile images",
     )
     parser.add_argument(
+        "--blank-image",
+        type=Path,
+        help="Optional no-contact DIGIT reference image",
+    )
+    parser.add_argument(
         "--minimum-good-edges",
         type=int,
-        default=0,
-        help=(
-            "Exact detected-edge count for a good key; the default 0 means "
-            "that any detected line is defective"
-        ),
+        default=2,
+        help="Temporary rule: classify as good at or above this edge count",
     )
     parser.add_argument(
         "--max-gripper-current",
@@ -108,6 +110,15 @@ def validate_poses_without_hardware() -> None:
         joints = kinematics.inverse(pose)
         joint_degrees = [round(math.degrees(q), 2) for q in joints]
         print(f"{name:16s}: reachable; joints_deg={joint_degrees}")
+
+
+def load_blank_image(path: Path | None):
+    if path is None:
+        return None
+    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if image is None:
+        raise SystemExit(f"Could not read blank DIGIT image: {path}")
+    return image
 
 
 def require_hardware_calibration() -> None:
@@ -136,14 +147,15 @@ def main() -> None:
     if not args.digit_serial:
         raise SystemExit("--digit-serial is required for hardware execution")
 
+    blank_image = load_blank_image(args.blank_image)
+
     # Import only for a real hardware run so pose validation still works on a
     # computer that does not have the arm driver's dependencies installed.
     from interface.dynamixel_driver import DynamixelDriver
-    from interface.dynamixel_driver import DynamixelDriver
 
     detector = TactileBandDetector()
-    classifier = TactileShapeDebugClassifierAdapter(
-        minimum_good_edges=args.minimum_good_edges,
+    classifier = EmbossedFeatureClassifier(
+        minimum_good_edges=args.minimum_good_edges
     )
     digit_config = DigitCameraConfig(
         serial_number=args.digit_serial,
@@ -167,6 +179,7 @@ def main() -> None:
             poses=SORTING_POSES,
             output_dir=args.output_dir,
             gripper_max_current=args.max_gripper_current,
+            blank_image=blank_image,
         )
         result = task.run_once()
 
