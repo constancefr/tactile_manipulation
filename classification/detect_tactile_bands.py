@@ -46,16 +46,39 @@ def angle_difference(a: float, b: float) -> float:
     return abs(((a - b + math.pi / 2) % math.pi) - math.pi / 2)
 
 
-def preprocess(image: np.ndarray, border_fraction: float) -> tuple[np.ndarray, np.ndarray]:
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    sigma = max(3.0, 0.06 * min(gray.shape))
+def preprocess(
+    image: np.ndarray, border_fraction: float, blank_image: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Preprocess the input image and return (enhanced_image, edge_map).
 
-    # Remove slow illumination variation from the DIGIT image.
-    background = cv2.GaussianBlur(gray, (0, 0), sigmaX=sigma)
-    enhanced = cv2.normalize(gray - background, None, 0, 255, cv2.NORM_MINMAX)
-    enhanced = enhanced.astype(np.uint8)
-    enhanced = cv2.createCLAHE(2.0, (8, 8)).apply(enhanced)
-    enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
+    If `blank_image` is provided, subtract the blank (reference) image from
+    the input before further processing. Both images must have the same
+    spatial dimensions.
+    """
+    if blank_image is not None:
+        if blank_image.shape[:2] != image.shape[:2]:
+            raise RuntimeError("Blank image size does not match input image size")
+        # Convert to grayscale floats and subtract the blank reference.
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        blank_gray = cv2.cvtColor(blank_image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        diff = gray - blank_gray
+        # Normalize difference to full 0-255 range for subsequent contrast ops.
+        enhanced = cv2.normalize(diff, None, 0, 255, cv2.NORM_MINMAX)
+        enhanced = enhanced.astype(np.uint8)
+        sigma = max(3.0, 0.06 * min(image.shape[:2]))
+        enhanced = cv2.createCLAHE(2.0, (8, 8)).apply(enhanced)
+        enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        sigma = max(3.0, 0.06 * min(gray.shape))
+
+        # Remove slow illumination variation from the DIGIT image.
+        background = cv2.GaussianBlur(gray, (0, 0), sigmaX=sigma)
+        enhanced = cv2.normalize(gray - background, None, 0, 255, cv2.NORM_MINMAX)
+        enhanced = enhanced.astype(np.uint8)
+        enhanced = cv2.createCLAHE(2.0, (8, 8)).apply(enhanced)
+        enhanced = cv2.GaussianBlur(enhanced, (3, 3), 0)
 
     median = float(np.median(enhanced))
     low = int(max(10, 0.66 * median))
@@ -286,42 +309,76 @@ def process_image(path: Path, output: Path, args: argparse.Namespace) -> dict[st
     if image is None:
         raise RuntimeError(f"Could not read {path}")
 
-    enhanced, edge_map = preprocess(image, args.border_fraction)
-    segments = find_segments(
-        edge_map,
-        args.min_line_fraction,
-        args.max_gap_fraction,
-        args.hough_threshold,
-    )
+    # If a blank/reference image was provided, load it and pass to preprocess.
+    blank_img = None
+    if getattr(args, "blank_image", None):
+        blank_path = Path(args.blank_image)
+        blank_img = cv2.imread(str(blank_path), cv2.IMREAD_COLOR)
+        if blank_img is None:
+            raise RuntimeError(f"Could not read blank image {blank_path}")
 
-    theta: float | None = None
-    aligned: list[Segment] = []
-    selected: list[Edge] = []
+    def detect_from_enhanced(enh: np.ndarray, emap: np.ndarray):
+        segs = find_segments(
+            emap,
+            args.min_line_fraction,
+            args.max_gap_fraction,
+            args.hough_threshold,
+        )
+        if not segs:
+            return None, [], []
+        th = dominant_angle(segs)
+        aligned = [s for s in segs if angle_difference(s.angle, th) <= math.radians(args.angle_tolerance)]
+        candidates = cluster_segments(aligned, th, args.cluster_distance, args.interval_gap)
+        selected_edges = select_edges(candidates, image.shape[:2], args.min_support_fraction, args.relative_score, args.max_edges)
+        return th, selected_edges, segs
 
+    # If a blank image was provided, try both blank-subtracted and normal preprocess
+    # and pick the better result (prefer expected edge counts and higher score).
+    if blank_img is not None:
+        enh_blank, emap_blank = preprocess(image, args.border_fraction, blank_img)
+        th_b, sel_b, segs_b = detect_from_enhanced(enh_blank, emap_blank)
+
+        enh_norm, emap_norm = preprocess(image, args.border_fraction, None)
+        th_n, sel_n, segs_n = detect_from_enhanced(enh_norm, emap_norm)
+
+        # Scoring: prefer results that yield 2 or 4 edges (likely correct), otherwise choose
+        # the candidate with larger total score (sum of edge.score). If tied, prefer
+        # the non-blank-normalized result.
+        def score_selected(sel):
+            if not sel:
+                return 0.0
+            ssum = sum(e.score for e in sel)
+            bonus = 2.0 if len(sel) in (2, 4) else 0.0
+            return ssum + bonus
+
+        score_b = score_selected(sel_b)
+        score_n = score_selected(sel_n)
+        if score_b > score_n:
+            theta, selected, segments = th_b, sel_b, segs_b
+            enhanced, edge_map = enh_blank, emap_blank
+        else:
+            theta, selected, segments = th_n, sel_n, segs_n
+            enhanced, edge_map = enh_norm, emap_norm
+    else:
+        enhanced, edge_map = preprocess(image, args.border_fraction, None)
+        theta, selected, segments = detect_from_enhanced(enhanced, edge_map)
+
+    # Build aligned segments list for debug output (may be empty)
     if segments:
-        theta = dominant_angle(segments)
-        aligned = [
-            s
-            for s in segments
-            if angle_difference(s.angle, theta) <= math.radians(args.angle_tolerance)
-        ]
-        candidates = cluster_segments(
-            aligned,
-            theta,
-            args.cluster_distance,
-            args.interval_gap,
-        )
-        selected = select_edges(
-            candidates,
-            image.shape[:2],
-            args.min_support_fraction,
-            args.relative_score,
-            args.max_edges,
-        )
+        aligned = [s for s in segments if angle_difference(s.angle, theta) <= math.radians(args.angle_tolerance)]
+    else:
+        aligned = []
 
+    # Save annotated detection image into the designated results folder.
     output.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(output), annotate(image, selected, theta))
+    annotated = annotate(image, selected, theta)
+    cv2.imwrite(str(output), annotated)
 
+    # Always save the preprocessed (enhanced) image for sanity-checking.
+    preproc_path = output.parent / f"{output.stem}_preprocessed.png"
+    cv2.imwrite(str(preproc_path), enhanced)
+
+    # Optional extra debug outputs go into a per-image debug subfolder.
     if args.save_debug:
         debug_dir = output.parent / f"{output.stem}_debug"
         debug_dir.mkdir(parents=True, exist_ok=True)
@@ -377,18 +434,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", type=Path, help="Image file or directory")
     parser.add_argument("--output", type=Path, help="Output path for one image")
     parser.add_argument("--output-dir", type=Path, help="Output directory")
+    parser.add_argument(
+        "--blank-image",
+        type=Path,
+        help="Optional blank/reference image to subtract from inputs before preprocessing",
+    )
     parser.add_argument("--save-debug", action="store_true")
 
     # Tuning parameters. Defaults are intended as starting points, not universal values.
     parser.add_argument("--border-fraction", type=float, default=0.04)
-    parser.add_argument("--min-line-fraction", type=float, default=0.22)
-    parser.add_argument("--max-gap-fraction", type=float, default=0.06)
-    parser.add_argument("--hough-threshold", type=int, default=25)
+    parser.add_argument("--min-line-fraction", type=float, default=0.12)
+    parser.add_argument("--max-gap-fraction", type=float, default=0.08)
+    parser.add_argument("--hough-threshold", type=int, default=12)
     parser.add_argument("--angle-tolerance", type=float, default=12.0)
     parser.add_argument("--cluster-distance", type=float, default=7.0)
     parser.add_argument("--interval-gap", type=float, default=12.0)
-    parser.add_argument("--min-support-fraction", type=float, default=0.30)
-    parser.add_argument("--relative-score", type=float, default=0.45)
+    parser.add_argument("--min-support-fraction", type=float, default=0.40)
+    parser.add_argument("--relative-score", type=float, default=0.60)
     parser.add_argument("--max-edges", type=int, default=6)
     return parser.parse_args()
 
@@ -399,18 +461,19 @@ def main() -> None:
     if not inputs:
         raise SystemExit(f"No images found in {args.input}")
 
+    # Place output images in a `results` folder by default. For a single file,
+    # use `<file>_results`; for an input directory use `<dir>_results`.
     if args.input.is_file():
-        outputs = [
-            args.output
-            or (args.output_dir or args.input.parent)
-            / f"{args.input.stem}_detected{args.input.suffix}"
-        ]
+        results_dir = args.output_dir or (args.input.parent / f"{args.input.stem}_results")
+        outputs = [results_dir / f"{args.input.stem}_detected{args.input.suffix}"]
     else:
-        output_dir = args.output_dir or args.input.parent / f"{args.input.name}_results"
-        outputs = [output_dir / f"{p.stem}_detected{p.suffix}" for p in inputs]
+        results_dir = args.output_dir or (args.input.parent / f"{args.input.name}_results")
+        outputs = [results_dir / f"{p.stem}_detected{p.suffix}" for p in inputs]
 
     rows = []
     for input_path, output_path in zip(inputs, outputs):
+        # Ensure the results directory exists for this output
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         row = process_image(input_path, output_path, args)
         rows.append(row)
         print(
