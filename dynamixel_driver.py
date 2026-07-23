@@ -36,6 +36,15 @@ class DynamixelDriver:
     baudrate = 1_000_000
     min_dxl_position = 0
     max_dxl_position = 4095
+    # The gripper runs in Extended Position Control mode (multi-turn), unlike
+    # the single-turn 0-4095 arm joints -- its true mechanical closed/open
+    # positions can legitimately fall outside [0, 4095] (e.g. just past the
+    # 4095->0 wraparound). Clamping gripper commands to min/max_dxl_position
+    # would silently truncate a valid target back to 4095 and it would never
+    # reach the real hard stop. Wide enough for a couple of extra turns either
+    # way without being fully unbounded.
+    gripper_min_position = -4096
+    gripper_max_position = 8192
     # Current register units are ~2.69 mA/tick on XL430/XM430-class motors.
     # Confirm against your gripper motor's control table before relying on
     # absolute mA values.
@@ -196,7 +205,7 @@ class DynamixelDriver:
         operating mode the gripper is currently in (see set_gripper_position/
         set_gripper_current to control that explicitly).'''
         with self._locked_io("set gripper"):
-            position = self._clamp_int(position, self.min_dxl_position, self.max_dxl_position)
+            position = self._clamp_int(position, self.gripper_min_position, self.gripper_max_position)
             if self.connected:
                 self._write_goal_position(self.motor_ids[4], position, "set gripper")
             return position
@@ -210,7 +219,7 @@ class DynamixelDriver:
         crushing it. If max_current is None, uses plain Position Control at full torque.
         '''
         with self._locked_io("set gripper position"):
-            position = self._clamp_int(position, self.min_dxl_position, self.max_dxl_position)
+            position = self._clamp_int(position, self.gripper_min_position, self.gripper_max_position)
             target_mode = OP_MODE_CURRENT_BASED_POSITION if max_current is not None else OP_MODE_EXTENDED_POSITION
             self._set_gripper_operating_mode_unlocked(target_mode)
             if not self.connected:
@@ -254,6 +263,16 @@ class DynamixelDriver:
                 self._read2(self.motor_ids[4], self.address.present_current, "read gripper current")
             )
             return raw * self.current_ma_per_unit
+
+    def set_gripper_speed(self, speed: int) -> None:
+        '''Set the gripper's profile velocity (max speed) independently of the
+        arm joints -- set_joint_speeds() only covers motor_ids[:4]. Lower values
+        close/open more slowly and gently; higher values move faster.'''
+        with self._locked_io("set gripper speed"):
+            speed = max(1, int(speed))
+            if not self.connected:
+                return
+            self._write4(self.motor_ids[4], self.address.profile_velocity, speed, "set gripper speed")
 
     def set_gripper_torque(self, enabled: bool) -> None:
         '''Enable/disable torque on the gripper motor only, leaving the four arm

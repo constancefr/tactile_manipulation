@@ -64,6 +64,14 @@ CLOSE_KERNEL_SIZE = 15
 CLOSE_ITERATIONS = 3
 MIN_CONTOUR_AREA = 1500  # px^2; discard smaller contours as noise
 
+# --- Multi-object detection ---------------------------------------------------
+# Separate objects (e.g. multiple rectangles pressed side by side) survive as
+# distinct connected components as long as they don't touch -- but small noise
+# fragments (sensor grain, JPEG artifacts) can also slip past MIN_CONTOUR_AREA.
+# A real second/third object should be a comparable size to the largest one, so
+# anything much smaller than that is treated as noise, not a separate object.
+RELATIVE_AREA_THRESHOLD = 0.05  # fraction of the largest contour's area
+
 # --- Edge-on orientation refinement (Canny + Hough, "edge_contact" cases only) --
 # Only applied for edge_contact: a genuinely straight, sharp deformation ridge
 # gives Canny a continuous edge to trace. Filled-blob contacts have a soft,
@@ -130,12 +138,20 @@ def _contact_mask_bgsub(img: np.ndarray, reference: np.ndarray) -> tuple[np.ndar
     return thresh, diff_norm
 
 
-def segment_contact(
+def segment_contacts(
     img: np.ndarray, reference: np.ndarray | None = None
-) -> tuple[np.ndarray | None, np.ndarray]:
-    '''Returns (convex_hull_contour_or_None, evidence_image). evidence_image is the
-    grayscale signal the mask was thresholded from (diff-vs-reference or gradient
-    magnitude), reused by refine_edge_orientation() for Hough line fitting.'''
+) -> tuple[list[np.ndarray], np.ndarray]:
+    '''
+    Returns (hulls, evidence_image) -- one convex-hull contour per detected
+    object, sorted left-to-right by centroid x for a stable reading order.
+    evidence_image is the grayscale signal the mask was thresholded from
+    (diff-vs-reference or gradient magnitude), reused by refine_edge_orientation()
+    for Hough line fitting.
+
+    Keeps every contour whose area is at least RELATIVE_AREA_THRESHOLD of the
+    largest one -- multiple real objects (e.g. several rectangles pressed side
+    by side) are comparably sized, whereas noise fragments are much smaller.
+    '''
     if reference is not None:
         mask, evidence = _contact_mask_bgsub(img, reference)
     else:
@@ -150,9 +166,31 @@ def segment_contact(
     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = [c for c in contours if cv2.contourArea(c) > MIN_CONTOUR_AREA]
     if not contours:
+        return [], evidence
+
+    max_area = max(cv2.contourArea(c) for c in contours)
+    significant = [c for c in contours if cv2.contourArea(c) >= RELATIVE_AREA_THRESHOLD * max_area]
+
+    def centroid_x(c: np.ndarray) -> float:
+        m = cv2.moments(c)
+        return m["m10"] / m["m00"] if m["m00"] > 0 else 0.0
+
+    significant.sort(key=centroid_x)
+    hulls = [cv2.convexHull(c) for c in significant]
+    return hulls, evidence
+
+
+def segment_contact(
+    img: np.ndarray, reference: np.ndarray | None = None
+) -> tuple[np.ndarray | None, np.ndarray]:
+    '''Backward-compatible single-object entry point: returns the largest
+    detected hull (by area), or None if nothing was detected. Prefer
+    segment_contacts() for scenes that may contain more than one object.'''
+    hulls, evidence = segment_contacts(img, reference)
+    if not hulls:
         return None, evidence
-    largest = max(contours, key=cv2.contourArea)
-    return cv2.convexHull(largest), evidence
+    largest = max(hulls, key=cv2.contourArea)
+    return largest, evidence
 
 
 def refine_edge_orientation(evidence: np.ndarray, hull: np.ndarray) -> float | None:
@@ -256,12 +294,29 @@ def classify(hull: np.ndarray, evidence: np.ndarray | None = None) -> ShapeResul
     )
 
 
-def annotate(img: np.ndarray, result: ShapeResult | None) -> np.ndarray:
+OBJECT_COLORS = [
+    (0, 255, 255),   # yellow
+    (255, 0, 255),   # magenta
+    (255, 255, 0),   # cyan
+    (0, 165, 255),   # orange
+    (0, 255, 0),     # green
+]
+
+
+def classify_all(img: np.ndarray, reference: np.ndarray | None = None) -> list[ShapeResult]:
+    '''Detects and classifies every significant object in the frame (see
+    segment_contacts()), sorted left-to-right. Use this for multi-object scenes;
+    use classify()+segment_contact() directly only when exactly one object is expected.'''
+    hulls, evidence = segment_contacts(img, reference)
+    return [classify(hull, evidence) for hull in hulls]
+
+
+def annotate(img: np.ndarray, result: ShapeResult | None, color: tuple[int, int, int] = (0, 255, 255)) -> np.ndarray:
     vis = img.copy()
     if result is None:
         cv2.putText(vis, "no contact detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
         return vis
-    cv2.drawContours(vis, [result.contour], -1, (0, 255, 255), 2)
+    cv2.drawContours(vis, [result.contour], -1, color, 2)
     label = f"{result.label}"
     if result.orientation_deg is not None:
         label += f"  angle={result.orientation_deg:.1f}deg"
@@ -271,18 +326,41 @@ def annotate(img: np.ndarray, result: ShapeResult | None) -> np.ndarray:
             theta = math.radians(result.orientation_deg)
             length = max(result.rect_size) / 2
             p2 = (int(cx + length * math.cos(theta)), int(cy + length * math.sin(theta)))
-            cv2.arrowedLine(vis, (cx, cy), p2, (255, 0, 255), 2, tipLength=0.15)
+            cv2.arrowedLine(vis, (cx, cy), p2, color, 2, tipLength=0.15)
     cv2.putText(vis, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
     return vis
 
 
-def process_image(path: Path, reference: np.ndarray | None = None) -> tuple[np.ndarray, ShapeResult | None]:
+def annotate_all(img: np.ndarray, results: list[ShapeResult]) -> np.ndarray:
+    '''Draws every detected object in its own color with an index label ("#1", "#2", ...)
+    and a count header, instead of annotate()'s single-object overlay.'''
+    vis = img.copy()
+    if not results:
+        cv2.putText(vis, "no contact detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        return vis
+    cv2.putText(vis, f"{len(results)} object(s) detected", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+    for idx, result in enumerate(results, start=1):
+        color = OBJECT_COLORS[(idx - 1) % len(OBJECT_COLORS)]
+        cv2.drawContours(vis, [result.contour], -1, color, 2)
+        M = cv2.moments(result.contour)
+        cx, cy = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])) if M["m00"] > 0 else (0, 0)
+        label = f"#{idx} {result.label}"
+        if result.orientation_deg is not None:
+            label += f" {result.orientation_deg:.1f}deg"
+            theta = math.radians(result.orientation_deg)
+            length = max(result.rect_size) / 2
+            p2 = (int(cx + length * math.cos(theta)), int(cy + length * math.sin(theta)))
+            cv2.arrowedLine(vis, (cx, cy), p2, color, 2, tipLength=0.15)
+        cv2.putText(vis, label, (10, 25 + 22 * idx), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    return vis
+
+
+def process_image(path: Path, reference: np.ndarray | None = None) -> tuple[np.ndarray, list[ShapeResult]]:
     img = cv2.imread(str(path))
     if img is None:
         raise ValueError(f"could not read image: {path}")
-    hull, evidence = segment_contact(img, reference)
-    result = classify(hull, evidence) if hull is not None else None
-    return img, result
+    results = classify_all(img, reference)
+    return img, results
 
 
 def parse_args() -> argparse.Namespace:
@@ -317,17 +395,18 @@ def main() -> None:
         annotate_dir.mkdir(parents=True, exist_ok=True)
 
     for path in paths:
-        img, result = process_image(path, reference)
-        if result is None:
+        img, results = process_image(path, reference)
+        if not results:
             print(f"{path.name}: no contact detected")
             continue
-        angle_str = f"{result.orientation_deg:.1f}deg" if result.orientation_deg is not None else "n/a"
-        print(
-            f"{path.name}: shape={result.label} orientation={angle_str} "
-            f"vertices={result.vertices} circularity={result.circularity:.2f} area={result.area:.0f}"
+        summary = "; ".join(
+            f"#{i} {r.label}@{r.orientation_deg:.1f}deg" if r.orientation_deg is not None else f"#{i} {r.label}"
+            for i, r in enumerate(results, start=1)
         )
+        rect_count = sum(1 for r in results if r.label in ("rectangle", "square"))
+        print(f"{path.name}: {len(results)} object(s), {rect_count} rectangle-like -- {summary}")
         if annotate_dir or args.show:
-            vis = annotate(img, result)
+            vis = annotate_all(img, results)
             if annotate_dir:
                 cv2.imwrite(str(annotate_dir / path.name), vis)
             if args.show:
