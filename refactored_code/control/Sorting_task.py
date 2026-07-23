@@ -24,7 +24,7 @@ from .tactile_detector import DetectionResult, TactileBandDetector
 
 
 DebugPanelBuilder = Callable[
-    [Path, np.ndarray],
+    [Path],
     tuple[np.ndarray, object | None, dict[str, object]],
 ]
 
@@ -57,19 +57,10 @@ class TactileShapeDebugClassifierAdapter:
 
     def __init__(
         self,
-        reference_image: np.ndarray,
         *,
         minimum_good_edges: int = 0,
         debug_panel_builder: DebugPanelBuilder | None = None,
     ) -> None:
-        if (
-            not isinstance(reference_image, np.ndarray)
-            or reference_image.ndim != 3
-            or reference_image.shape[2] != 3
-        ):
-            raise ValueError("reference_image must be a BGR NumPy image")
-
-        self.reference_image = reference_image
         self._key_classifier = EmbossedFeatureClassifier(
             minimum_good_edges=minimum_good_edges
         )
@@ -87,10 +78,6 @@ class TactileShapeDebugClassifierAdapter:
             if isinstance(image, np.ndarray)
             else image.source_image
         )
-        if frame.shape != self.reference_image.shape:
-            raise ValueError(
-                "reference_image dimensions must match the captured frame"
-            )
 
         # build_debug_panel() deliberately accepts a Path. A lossless temporary
         # PNG adapts the existing in-memory camera frame without changing that
@@ -104,8 +91,7 @@ class TactileShapeDebugClassifierAdapter:
                     "Could not create the temporary classifier input image"
                 )
             debug_panel, shape_result, features = self._build_debug_panel(
-                frame_path,
-                self.reference_image,
+                frame_path
             )
 
         if shape_result is None:
@@ -214,7 +200,6 @@ class KeySortingTask:
         gripper_max_current: int | None = 60,
         tactile_settle_delay_sec: float = 0.5,
         return_home: bool = True,
-        blank_image: np.ndarray | None = None,
         sleep: Callable[[float], None] = time.sleep,
         log: Callable[[str], None] = print,
         input_fn: Callable[[str], str] = input,
@@ -223,10 +208,6 @@ class KeySortingTask:
             raise ValueError("gripper_max_current must be positive")
         if tactile_settle_delay_sec < 0.0:
             raise ValueError("tactile_settle_delay_sec cannot be negative")
-        if blank_image is not None and (
-            not isinstance(blank_image, np.ndarray) or blank_image.ndim != 3
-        ):
-            raise ValueError("blank_image must be a BGR NumPy image")
 
         self.robot = robot
         self.camera = camera
@@ -237,7 +218,6 @@ class KeySortingTask:
         self.gripper_max_current = gripper_max_current
         self.tactile_settle_delay_sec = tactile_settle_delay_sec
         self.return_home = return_home
-        self.blank_image = blank_image
         self._sleep = sleep
         self._log = log
         self._input = input_fn
@@ -302,10 +282,7 @@ class KeySortingTask:
             # preprocessed inspection artifacts. Its edge_count is not used to
             # choose GOOD/DEFECT or the motion destination.
             self._log("Generating legacy edge-detection artifacts")
-            detection = self.detector.detect(
-                frame,
-                blank_image=self.blank_image,
-            )
+            detection = self.detector.detect(frame)
 
             paths = self._save_inspection_artifacts(
                 frame,

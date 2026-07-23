@@ -157,7 +157,7 @@ def test_debug_classifier_angle_and_good_defect_motion_routes() -> None:
     shape_result = ShapeResult()
     debug_panel = np.zeros((72, 96, 3), dtype=np.uint8)
 
-    def build_good_debug_panel(path, reference):
+    def build_good_debug_panel(path):
         return debug_panel, shape_result, {
             "aspect": 4.5,
             "num_edges": 0,
@@ -169,19 +169,17 @@ def test_debug_classifier_angle_and_good_defect_motion_routes() -> None:
             self.edge_count = edge_count
 
     good_adapter = TactileShapeDebugClassifierAdapter(
-        frame,
         minimum_good_edges=0,
         debug_panel_builder=build_good_debug_panel,
     )
 
-    def build_defect_debug_panel(path, reference):
+    def build_defect_debug_panel(path):
         return debug_panel, shape_result, {
             "aspect": 4.5,
             "num_edges": 2,
         }
 
     defect_adapter = TactileShapeDebugClassifierAdapter(
-        frame,
         minimum_good_edges=0,
         debug_panel_builder=build_defect_debug_panel,
     )

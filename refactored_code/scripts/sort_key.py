@@ -15,8 +15,6 @@ import argparse
 import math
 from pathlib import Path
 
-import cv2
-
 from control import (
     ArmKinematics,
     ArmPose,
@@ -79,11 +77,6 @@ def parse_args() -> argparse.Namespace:
         help="Directory for raw, annotated, and preprocessed tactile images",
     )
     parser.add_argument(
-        "--blank-image",
-        type=Path,
-        help="Optional no-contact DIGIT reference image",
-    )
-    parser.add_argument(
         "--minimum-good-edges",
         type=int,
         default=0,
@@ -117,15 +110,6 @@ def validate_poses_without_hardware() -> None:
         print(f"{name:16s}: reachable; joints_deg={joint_degrees}")
 
 
-def load_blank_image(path: Path | None):
-    if path is None:
-        return None
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    if image is None:
-        raise SystemExit(f"Could not read blank DIGIT image: {path}")
-    return image
-
-
 def require_hardware_calibration() -> None:
     missing = []
     if not POSITIONS_CALIBRATED:
@@ -152,16 +136,13 @@ def main() -> None:
     if not args.digit_serial:
         raise SystemExit("--digit-serial is required for hardware execution")
 
-    blank_image = load_blank_image(args.blank_image)
-
     # Import only for a real hardware run so pose validation still works on a
     # computer that does not have the arm driver's dependencies installed.
     from interface.dynamixel_driver import DynamixelDriver
 
     detector = TactileBandDetector()
     classifier = TactileShapeDebugClassifierAdapter(
-        reference_image=blank_image,
-        minimum_good_edges=args.minimum_good_edges
+        minimum_good_edges=args.minimum_good_edges,
     )
     digit_config = DigitCameraConfig(
         serial_number=args.digit_serial,
@@ -185,7 +166,6 @@ def main() -> None:
             poses=SORTING_POSES,
             output_dir=args.output_dir,
             gripper_max_current=args.max_gripper_current,
-            blank_image=blank_image,
         )
         result = task.run_once()
 
