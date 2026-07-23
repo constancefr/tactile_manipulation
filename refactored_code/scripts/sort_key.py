@@ -15,8 +15,6 @@ import argparse
 import math
 from pathlib import Path
 
-import cv2
-
 from control import (
     ArmKinematics,
     ArmPose,
@@ -77,15 +75,20 @@ def parse_args() -> argparse.Namespace:
         help="Directory for raw, annotated, and preprocessed tactile images",
     )
     parser.add_argument(
-        "--blank-image",
-        type=Path,
-        help="Optional no-contact DIGIT reference image",
+        "--save-debug",
+        action="store_true",
+        help="Also save per-stage debug images (Canny edges, all Hough "
+        "segments, angle-aligned segments) alongside the usual outputs",
     )
     parser.add_argument(
         "--minimum-good-edges",
         type=int,
-        default=2,
-        help="Temporary rule: classify as good at or above this edge count",
+        default=1,
+        help="Temporary rule: classify as good at or above this edge count "
+        "(1 matches EmbossedFeatureClassifier's own default and the "
+        "validated statistics against real WithRectangle/WithoutRectangle "
+        "data -- most genuine single-rectangle grasps register only 1 edge, "
+        "not a matched pair)",
     )
     parser.add_argument(
         "--max-gripper-current",
@@ -95,11 +98,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--digit-resolution",
-        help="Optional DIGIT stream name, e.g. QVGA; defaults to SDK setting",
+        default="VGA",
+        help="DIGIT stream name (default VGA/640x480, matching every tuned "
+        "detector parameter and the reference dataset -- leaving this unset "
+        "previously left the SDK at its own QVGA/320x240 default, a "
+        "cropped/binned frame the detector was never tuned against)",
     )
     parser.add_argument(
         "--digit-fps",
-        help="Optional FPS key for the selected stream, e.g. 30fps",
+        default="30fps",
+        help="FPS key for the selected stream (default 30fps)",
     )
     return parser.parse_args()
 
@@ -110,15 +118,6 @@ def validate_poses_without_hardware() -> None:
         joints = kinematics.inverse(pose)
         joint_degrees = [round(math.degrees(q), 2) for q in joints]
         print(f"{name:16s}: reachable; joints_deg={joint_degrees}")
-
-
-def load_blank_image(path: Path | None):
-    if path is None:
-        return None
-    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    if image is None:
-        raise SystemExit(f"Could not read blank DIGIT image: {path}")
-    return image
 
 
 def require_hardware_calibration() -> None:
@@ -146,8 +145,6 @@ def main() -> None:
         raise SystemExit("--port is required for hardware execution")
     if not args.digit_serial:
         raise SystemExit("--digit-serial is required for hardware execution")
-
-    blank_image = load_blank_image(args.blank_image)
 
     # Import only for a real hardware run so pose validation still works on a
     # computer that does not have the arm driver's dependencies installed.
@@ -179,14 +176,22 @@ def main() -> None:
             poses=SORTING_POSES,
             output_dir=args.output_dir,
             gripper_max_current=args.max_gripper_current,
-            blank_image=blank_image,
+            save_debug=args.save_debug,
         )
         result = task.run_once()
 
     print(f"Completed: {result.classification.label.value}")
     print(f"Detected edges: {result.classification.edge_count}")
+    angle_text = (
+        f"{result.angle_deg:.1f} deg" if result.angle_deg is not None else "n/a"
+    )
+    print(f"Detected angle: {angle_text}")
+    print(f"Release pose: {result.release_pose}")
     print(f"Raw image: {result.raw_image_path}")
+    print(f"Reference image: {result.reference_image_path}")
     print(f"Annotated image: {result.annotated_image_path}")
+    if result.debug_dir is not None:
+        print(f"Debug images: {result.debug_dir}")
 
 
 if __name__ == "__main__":

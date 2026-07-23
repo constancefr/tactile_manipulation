@@ -1,0 +1,7 @@
+file,edge_count,estimated_band_count,annotated_output,preprocessed_output
+2026-07-23-182607.jpg,6,3.0,Data/results_before/WithoutRectangle/2026-07-23-182607_detected.jpg,Data/results_before/WithoutRectangle/2026-07-23-182607_preprocessed.png
+2026-07-23-182615.jpg,6,3.0,Data/results_before/WithoutRectangle/2026-07-23-182615_detected.jpg,Data/results_before/WithoutRectangle/2026-07-23-182615_preprocessed.png
+2026-07-23-182622.jpg,6,3.0,Data/results_before/WithoutRectangle/2026-07-23-182622_detected.jpg,Data/results_before/WithoutRectangle/2026-07-23-182622_preprocessed.png
+2026-07-23-182630.jpg,6,3.0,Data/results_before/WithoutRectangle/2026-07-23-182630_detected.jpg,Data/results_before/WithoutRectangle/2026-07-23-182630_preprocessed.png
+2026-07-23-182645.jpg,6,3.0,Data/results_before/WithoutRectangle/2026-07-23-182645_detected.jpg,Data/results_before/WithoutRectangle/2026-07-23-182645_preprocessed.png
+2026-07-23-182657.jpg,6,3.0,Data/results_before/WithoutRectangle/2026-07-23-182657_detected.jpg,Data/results_before/WithoutRectangle/2026-07-23-182657_preprocessed.png

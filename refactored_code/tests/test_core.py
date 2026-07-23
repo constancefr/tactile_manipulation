@@ -164,8 +164,9 @@ def test_digit_camera_uses_injected_device_and_warms_up() -> None:
         def disconnect(self) -> None:
             self.connected = False
 
-        def get_frame(self):
+        def get_frame(self, transpose: bool = False):
             self.frames_read += 1
+            self.last_transpose = transpose
             return np.zeros((24, 32, 3), dtype=np.uint8)
 
         def set_resolution(self, resolution) -> None:
@@ -173,6 +174,10 @@ def test_digit_camera_uses_injected_device_and_warms_up() -> None:
 
         def set_fps(self, fps) -> None:
             self.fps = fps
+
+        def set_intensity(self, intensity: int) -> int:
+            self.intensity = intensity
+            return intensity
 
     made = []
 
@@ -187,6 +192,8 @@ def test_digit_camera_uses_injected_device_and_warms_up() -> None:
             resolution="QVGA",
             fps="30fps",
             warmup_frames=2,
+            stream_settle_delay_sec=0.0,
+            flush_frames_per_capture=0,
         ),
         device_factory=factory,
     )
@@ -194,6 +201,15 @@ def test_digit_camera_uses_injected_device_and_warms_up() -> None:
         frame = camera.capture_frame()
         assert frame.shape == (24, 32, 3)
         assert made[0].frames_read == 3
+        assert made[0].last_transpose is True
+        assert made[0].intensity == 15
+
+        # A second capture on the same connection re-flushes per call, not
+        # just once after connect -- otherwise a stale buffered frame from
+        # before the gap (e.g. gripper motion time) could be returned.
+        frames_before = made[0].frames_read
+        camera.capture_frame()
+        assert made[0].frames_read == frames_before + 1  # 0 flush + 1 real read
         assert made[0].resolution == FakeDigit.STREAMS["QVGA"]
         assert made[0].fps == 30
     assert not made[0].connected
@@ -222,12 +238,9 @@ def test_complete_sorting_task_defect_path(tmp_path) -> None:
     pose = kinematics.forward((0.0, 0.5, -0.9, 0.4))
     poses = SortingPoses(
         home=pose,
-        pick_approach=pose,
         pick_grasp=pose,
         pick_lift=pose,
-        good_approach=pose,
         good_drop=pose,
-        defect_approach=pose,
         defect_drop=pose,
     )
     robot = RobotHardware(
@@ -269,3 +282,57 @@ def test_complete_sorting_task_defect_path(tmp_path) -> None:
     assert result.raw_image_path.exists()
     assert result.annotated_image_path.exists()
     assert result.preprocessed_image_path.exists()
+
+
+def test_wait_for_arrival_proceeds_after_timeout_instead_of_raising() -> None:
+    """A stuck arm must not abort the cycle -- it should log a warning and
+    let the gripper open anyway, since never releasing is worse than
+    releasing slightly early. This is the behaviour that replaced an
+    earlier, reverted approach where ArmController.move_to_pose() itself
+    raised on timeout for every move, which on real hardware aborted before
+    the grasp-pose user-input prompt was ever reached."""
+    from control import (
+        EmbossedFeatureClassifier,
+        KeySortingTask,
+        RobotHardware,
+        SortingPoses,
+    )
+
+    class StuckDriver(FakeDriver):
+        def set_joint_angles(self, angles):
+            pass  # position never actually updates
+
+    driver = StuckDriver()
+    kinematics = ArmKinematics()
+    robot = RobotHardware(
+        driver,
+        port="FAKE",
+        gripper_calibration=GripperCalibration(closed_ticks=1800, open_ticks=3200),
+        kinematics=kinematics,
+        workspace=Workspace(
+            min_x=-1.0, max_x=1.0, min_y=-1.0, max_y=1.0, min_z=-1.0, max_z=1.0
+        ),
+        motion=MotionConfig(max_step_deg=10.0, step_delay_sec=0.0),
+    )
+    logs: list[str] = []
+    pose = kinematics.forward((0.0, 0.5, -0.9, 0.4))
+    poses = SortingPoses(home=pose, pick_grasp=pose, pick_lift=pose, good_drop=pose, defect_drop=pose)
+
+    with robot:
+        task = KeySortingTask(
+            robot=robot,
+            camera=None,
+            detector=TactileBandDetector(),
+            classifier=EmbossedFeatureClassifier(),
+            poses=poses,
+            release_arrival_timeout_sec=0.05,
+            release_arrival_poll_interval_sec=0.01,
+            sleep=lambda _: None,
+            log=logs.append,
+        )
+        target_joints = kinematics.inverse(
+            kinematics.forward((0.3, 0.2, -0.5, 0.1))
+        )
+        task._wait_for_arrival(target_joints)  # must not raise
+
+    assert any("releasing anyway" in message for message in logs)

@@ -6,6 +6,7 @@ from .key_classifier import (
     EmbossedFeatureClassifier,
     KeyClassification,
     KeyLabel,
+    draw_classification_overlay,
 )
 from .kinematics import ArmGeometry, ArmKinematics, ArmPose
 from .robot_hardware import RobotHardware
@@ -39,4 +40,5 @@ __all__ = [
     "SortingPoses",
     "TactileBandDetector",
     "Workspace",
+    "draw_classification_overlay",
 ]

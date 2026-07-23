@@ -1,0 +1,4 @@
+label=good
+edge_count=1
+minimum_good_edges=1
+angle_deg=175.84119724338748

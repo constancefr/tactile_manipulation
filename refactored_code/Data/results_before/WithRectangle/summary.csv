@@ -1,0 +1,11 @@
+file,edge_count,estimated_band_count,annotated_output,preprocessed_output
+2026-07-23-182145.jpg,0,0.0,Data/results_before/WithRectangle/2026-07-23-182145_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182145_preprocessed.png
+2026-07-23-182157.jpg,2,1.0,Data/results_before/WithRectangle/2026-07-23-182157_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182157_preprocessed.png
+2026-07-23-182206.jpg,1,0.5,Data/results_before/WithRectangle/2026-07-23-182206_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182206_preprocessed.png
+2026-07-23-182214.jpg,4,2.0,Data/results_before/WithRectangle/2026-07-23-182214_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182214_preprocessed.png
+2026-07-23-182237.jpg,6,3.0,Data/results_before/WithRectangle/2026-07-23-182237_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182237_preprocessed.png
+2026-07-23-182245.jpg,6,3.0,Data/results_before/WithRectangle/2026-07-23-182245_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182245_preprocessed.png
+2026-07-23-182252.jpg,6,3.0,Data/results_before/WithRectangle/2026-07-23-182252_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182252_preprocessed.png
+2026-07-23-182504.jpg,3,1.5,Data/results_before/WithRectangle/2026-07-23-182504_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182504_preprocessed.png
+2026-07-23-182525.jpg,1,0.5,Data/results_before/WithRectangle/2026-07-23-182525_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182525_preprocessed.png
+2026-07-23-182548.jpg,6,3.0,Data/results_before/WithRectangle/2026-07-23-182548_detected.jpg,Data/results_before/WithRectangle/2026-07-23-182548_preprocessed.png

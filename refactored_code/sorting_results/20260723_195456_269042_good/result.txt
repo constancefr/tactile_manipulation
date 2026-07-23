@@ -1,0 +1,3 @@
+label=good
+edge_count=6
+minimum_good_edges=2

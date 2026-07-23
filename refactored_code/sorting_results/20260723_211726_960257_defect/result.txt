@@ -1,0 +1,4 @@
+label=defect
+edge_count=0
+minimum_good_edges=2
+angle_deg=n/a

@@ -25,6 +25,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-support-fraction", type=float, default=0.40)
     parser.add_argument("--relative-score", type=float, default=0.60)
     parser.add_argument("--max-edges", type=int, default=6)
+    parser.add_argument("--diff-blur-kernel", type=int, default=5)
+    parser.add_argument("--diff-gain", type=float, default=12.0)
+    parser.add_argument("--diff-canny-low", type=int, default=40)
+    parser.add_argument("--diff-canny-high", type=int, default=120)
     return parser.parse_args()
 
 
@@ -42,6 +46,10 @@ def main() -> None:
             min_support_fraction=args.min_support_fraction,
             relative_score=args.relative_score,
             max_edges=args.max_edges,
+            diff_blur_kernel=args.diff_blur_kernel,
+            diff_gain=args.diff_gain,
+            diff_canny_low=args.diff_canny_low,
+            diff_canny_high=args.diff_canny_high,
         )
     )
     records = detector.process_path(
