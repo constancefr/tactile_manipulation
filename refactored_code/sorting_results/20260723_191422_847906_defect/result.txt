@@ -1,0 +1,3 @@
+label=defect
+edge_count=1
+minimum_good_edges=2
