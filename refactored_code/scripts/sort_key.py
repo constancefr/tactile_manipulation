@@ -39,7 +39,7 @@ POSITIONS_CALIBRATED = True
 GRIPPER_CALIBRATED = True
 
 SORTING_POSES = SortingPoses(
-    home=ArmPose.from_cm_degrees(10, 0.0, 9, 0.0),
+    home=ArmPose.from_cm_degrees(10, 0.0, 15, 0.0),
     # pick_approach=ArmPose.from_cm_degrees(20.0, 0.0, 14.0, 0.0),
     pick_grasp=ArmPose.from_cm_degrees(19.5, 0.0, 15, 0.0),
     # pick_grasp=ArmPose.from_cm_degrees(20.0, 0.0, 9.0, 0.0),

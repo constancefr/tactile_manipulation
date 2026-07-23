@@ -46,10 +46,10 @@ class Workspace:
 
 @dataclass(frozen=True)
 class MotionConfig:
-    max_speed: int = 60
+    max_speed: int = 100
     min_speed: int = 5
-    max_step_deg: float = 2.0
-    step_delay_sec: float = 0.01
+    max_step_deg: float = 100.0
+    step_delay_sec: float = 0.001
     ik_position_tolerance_m: float = 1e-6
     ik_angle_tolerance_rad: float = 1e-6
 
