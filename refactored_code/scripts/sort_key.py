@@ -53,8 +53,8 @@ SORTING_POSES = SortingPoses(
 )
 
 GRIPPER_CALIBRATION = GripperCalibration(
-    closed_ticks=2250,  # TODO: replace with measured closed/contact position
-    open_ticks=2000,    # TODO: replace with measured open position
+    closed_ticks=2250,
+    open_ticks=2000,
 )
 
 
